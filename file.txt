@@ -1,0 +1,135 @@
+package com.ayla.contracts.controller;
+
+import java.util.Map;
+
+import javax.validation.Valid;
+
+import com.ayla.contracts.configs.YAMLConfig;
+import com.ayla.contracts.controllerHelpers.FetchDataFromReports;
+import com.ayla.contracts.controllerHelpers.RunPingForContracts;
+import com.ayla.contracts.controllerHelpers.RunQueriesForContracts;
+import com.ayla.contracts.exceptions.ApiParamsExceptions.RegionParamNotProvidedException;
+import com.ayla.contracts.validations.authTokenAndAccessTokenValidators.TokenValidator;
+import com.ayla.contracts.validations.authorisationValidators.AuthorisationValidator;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ResponseBody;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.ayla.contracts.configs.YAMLConfig;
+import com.ayla.contracts.controllerHelpers.RunPingForContracts;
+import com.ayla.contracts.controllerHelpers.RunQueriesForContracts;
+import com.ayla.contracts.model.contractMetaDataModels.ContractData;
+import com.ayla.contracts.repository.ContractDataRepository;
+import com.ayla.contracts.validations.authTokenAndAccessTokenValidators.TokenValidator;
+import com.ayla.contracts.validations.authorisationValidators.AuthorisationValidator;
+import java.util.*;
+import static com.ayla.contracts.utils.CommonUtils.*;
+
+@RestController
+@RequestMapping("/api/v1")
+public class ContractDataController {
+
+  @Autowired
+  NamedParameterJdbcTemplate namedParameterJdbcTemplate;
+
+  @Autowired
+  private YAMLConfig myConfig;
+
+  @Autowired
+  ContractDataRepository contractDataRepository;
+
+  private static final Logger log = LoggerFactory.getLogger(ContractDataController.class);
+
+  @CrossOrigin
+  @GetMapping("/contractsdata")
+  public Object getContractDataByReportName(@RequestParam Map<String, String> requestParams,
+                                            @RequestHeader("AUTHORIZATION") String authorizationHeaderValue){
+    log.info("entering contractsdata controller: requestParams are   {}",
+      requestParams);
+
+    // check headers and access tokens
+    TokenValidator tokenValidator = new TokenValidator();
+    boolean isHeaderTokenProvidedCorerctly = tokenValidator.runValidations(authorizationHeaderValue);
+    log.info("requestParams are : {} , after isHeaderTokenProvidedCorrectly checks : {}",
+      requestParams, isHeaderTokenProvidedCorerctly);
+
+    // check for authorisation and entitlement
+    List<String> allowedRoles = new ArrayList<>();
+    allowedRoles.addAll(ALLOWED_REPORTS_ROLES_LIST);
+    AuthorisationValidator authorisationValidator = new AuthorisationValidator(myConfig);
+    boolean isAuthorised = authorisationValidator.runValidations(requestParams, authorizationHeaderValue,
+      true, allowedRoles);
+    log.info("requestParams are : {} , after isAuthorised checks : {}", requestParams, isAuthorised);
+
+    // prepare to hand off to sql runs
+    RunQueriesForContracts runQueriesForContracts = new RunQueriesForContracts(myConfig);
+    //        log.info("requestParams are : {} , results are : {}", requestParams,
+    //                (queryResult == null) ? null : String.join(", ",(List)queryResult));
+    return runQueriesForContracts.fetchDataForContracts(requestParams, namedParameterJdbcTemplate);
+  }
+
+  @CrossOrigin
+  @GetMapping("/reportsdata")
+  public Object getReportsByReportsName(@RequestParam Map<String, String> requestParams,
+                                        @RequestHeader("AUTHORIZATION") String authorizationHeaderValue){
+    log.info("entering contractsdata controller: requestParams are   {}",
+      requestParams);
+
+    // check headers and access tokens
+    TokenValidator tokenValidator = new TokenValidator();
+    boolean isHeaderTokenProvidedCorerctly = tokenValidator.runValidations(authorizationHeaderValue);
+    log.info("requestParams are : {} , after isHeaderTokenProvidedCorrectly checks : {}",
+      requestParams, isHeaderTokenProvidedCorerctly);
+      
+    // check for authorisation and entitlement
+    List<String> allowedRoles = new ArrayList<>();
+    allowedRoles.addAll(ALLOWED_REPORTS_ROLES_LIST);
+    AuthorisationValidator authorisationValidator = new AuthorisationValidator(myConfig);
+    boolean isAuthorised = authorisationValidator.runValidations(requestParams, authorizationHeaderValue,
+      true, allowedRoles);
+    log.info("requestParams are : {} , after isAuthorised checks : {}", requestParams, isAuthorised);
+
+    FetchDataFromReports fetchDataFromReports = new FetchDataFromReports(myConfig);
+    return fetchDataFromReports.fetchReports(requestParams, authorizationHeaderValue);
+  }
+
+  @SuppressWarnings("unchecked")
+  @CrossOrigin
+  @GetMapping("/ping")
+  @ResponseBody
+  public ResponseEntity getContractPing(){
+    log.info("pinging contract staging for status");
+    // prepare to hand off to sql runs
+    RunPingForContracts runPingForContracts = new RunPingForContracts(myConfig);
+
+    if (runPingForContracts.fetchPingForContracts(namedParameterJdbcTemplate)) {
+      return new ResponseEntity("ok success", new HttpHeaders(), HttpStatus.OK);
+    }
+    else {
+      return new ResponseEntity("failed to connect", new HttpHeaders(),HttpStatus.UNPROCESSABLE_ENTITY);
+    }
+  }
+
+  /* post method for contracts */
+  @CrossOrigin
+  @PostMapping("/savecontractdata")
+  public Object saveContrasctData(@RequestHeader("AUTHORIZATION") String authorizationHeaderValue,
+                                  @Valid @RequestBody  ContractData contractData){
+    ContractData contractDataSave = contractDataRepository.save(contractData);
+    return contractDataSave;
+  }
+
+}
